@@ -15,7 +15,7 @@
  *   weather: weather.home      # optional, temperature shown on the overview
  */
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.2.1";
 const DOMAIN = "saj_esolar_cloud";
 
 // Sensor keys that identify each kind of device in the entity registry
@@ -278,16 +278,6 @@ function miniLine(series, start, end) {
     .map((p, i) => `${i ? "L" : "M"}${(((p[0] - start) / (end - start)) * 1000).toFixed(1)},${(38 - ((p[1] - lo) / (hi - lo)) * 34).toFixed(1)}`)
     .join("");
   return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity="0.8"/>`;
-}
-
-/** Mini bars (sum of the series) per category, for the overview strip. */
-function miniBars(categories, series) {
-  const totals = categories.map((_, i) => series.reduce((acc, s) => acc + (isNum(s.values[i]) ? Number(s.values[i]) : 0), 0));
-  const hi = Math.max(1, ...totals);
-  const w = 1000 / Math.max(categories.length, 1);
-  return totals
-    .map((v, i) => `<rect x="${(i * w + w * 0.15).toFixed(1)}" y="${(38 - (v / hi) * 34).toFixed(1)}" width="${(w * 0.7).toFixed(1)}" height="${((v / hi) * 34).toFixed(1)}" fill="#7f8ba3" opacity="0.7"/>`)
-    .join("");
 }
 
 const legend = (series) =>
@@ -711,7 +701,8 @@ class SajElekeeperCard extends HTMLElement {
   _chartHtml(id) {
     const spec = this._charts[id];
     if (!spec) return "";
-    const z = this._zoom?.[id];
+    // Only the line (time) charts zoom; bar charts always show every bar
+    const z = spec.type === "line" ? this._zoom?.[id] : null;
     const a = z && z.key === spec.key ? z.a : 0;
     const b = z && z.key === spec.key ? z.b : 1;
     let chart;
@@ -723,19 +714,13 @@ class SajElekeeperCard extends HTMLElement {
       chart = lineChartSvg(id, spec.series, spec.viewStart, spec.viewEnd, spec.leftUnit, spec.rightUnit);
       mini = miniLine(spec.series, spec.start, spec.end);
     } else {
-      const n = spec.allCategories.length;
-      const i0 = Math.max(0, Math.min(n - 1, Math.floor(a * n + 1e-6)));
-      const i1 = Math.max(i0 + 1, Math.min(n, Math.ceil(b * n - 1e-6)));
-      spec.offset = i0;
-      spec.categories = spec.allCategories.slice(i0, i1);
-      spec.series = spec.allSeries.map((s) => ({ ...s, values: s.values.slice(i0, i1) }));
+      spec.categories = spec.allCategories;
+      spec.series = spec.allSeries;
       chart = barChartSvg(id, spec.categories, spec.series, spec.unit);
-      mini = miniBars(spec.allCategories, spec.allSeries);
     }
     const zoomed = a > 0.0005 || b < 0.9995;
     const reset = zoomed ? `<button class="zoom-reset" data-zoom-reset="${id}" title="Reset zoom">↺</button>` : "";
-    // Zooming makes little sense with a handful of bars
-    const strip = spec.type === "line" || spec.allCategories.length > 4 ? zoomStrip(id, mini, a, b) : "";
+    const strip = spec.type === "line" ? zoomStrip(id, mini, a, b) : "";
     return `${reset}${chart}${strip}${legend(spec.legendSeries || spec.allSeries || spec.series)}<div class="tooltip" hidden></div>`;
   }
 
@@ -840,7 +825,8 @@ class SajElekeeperCard extends HTMLElement {
   _setZoom(id, a, b) {
     const spec = this._charts[id];
     if (!spec) return;
-    const min = spec.type === "line" ? 1 / 48 : 1 / Math.max(spec.allCategories.length, 1); // 30 min, or one bar
+    if (spec.type !== "line") return;
+    const min = 1 / 48; // 30 minutes of a day
     let w = Math.max(min, Math.min(1, b - a));
     a = Math.max(0, Math.min(1 - w, a));
     (this._zoom ??= {})[id] = { key: spec.key, a, b: a + w };
@@ -863,12 +849,15 @@ class SajElekeeperCard extends HTMLElement {
     if (!svg) return;
     const id = svg.dataset.chart;
     this._bindTooltip(svg);
+    if (this._charts[id]?.type !== "line") return;
     const current = () => {
       const z = this._zoom?.[id];
       return z && z.key === this._charts[id]?.key ? [z.a, z.b] : [0, 1];
     };
-    const plotFraction = (clientX) => {
-      const r = svg.getBoundingClientRect();
+    // The chart box is redrawn while zooming, replacing these elements: drags
+    // keep the size measured when they start instead of reading detached ones
+    const plotFraction = (clientX, r = svg.getBoundingClientRect()) => {
+      if (!r.width) return 0.5;
       const vx = ((clientX - r.left) / r.width) * CH.w;
       return Math.max(0, Math.min(1, (vx - CH.l) / (CH.w - CH.l - CH.r)));
     };
@@ -890,9 +879,10 @@ class SajElekeeperCard extends HTMLElement {
     svg.addEventListener("pointerdown", (ev) => {
       const [a0, b0] = current();
       if (b0 - a0 >= 0.999 || ev.button !== 0) return;
-      const x0 = plotFraction(ev.clientX);
+      const rect = svg.getBoundingClientRect();
+      const x0 = plotFraction(ev.clientX, rect);
       const move = (e) => {
-        const dx = (plotFraction(e.clientX) - x0) * (b0 - a0);
+        const dx = (plotFraction(e.clientX, rect) - x0) * (b0 - a0);
         this._setZoom(id, a0 - dx, b0 - dx);
       };
       const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up));
@@ -901,12 +891,11 @@ class SajElekeeperCard extends HTMLElement {
     });
     const strip = box.querySelector(".zoom");
     if (strip) {
-      const frac = (clientX) => {
-        const r = strip.getBoundingClientRect();
-        return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
-      };
       strip.addEventListener("pointerdown", (ev) => {
         ev.preventDefault();
+        const rect = strip.getBoundingClientRect();
+        if (!rect.width) return;
+        const frac = (clientX) => Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         const [a0, b0] = current();
         const f0 = frac(ev.clientX);
         const handle = ev.target.dataset?.h;

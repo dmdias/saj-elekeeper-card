@@ -50,9 +50,9 @@ card itself from the Home Assistant history and statistics.
   self-consumption and self-sufficiency summary.
 - **Comparison**: any energy counter per month, quarter or year, comparing
   years side by side.
-- **Zoomable charts**, as in the portal: an overview strip under each chart
-  with a window you can resize and drag, Ctrl/⌘ + mouse wheel or pinch to
-  zoom, drag to pan, and double-click to reset.
+- **Zoomable power curves**, as in the portal: an overview strip under the
+  day chart with a window you can resize and drag, Ctrl/⌘ + mouse wheel or
+  pinch to zoom, drag to pan, and double-click to reset.
 - Finds the integration's sensors on its own, so there are no entity IDs to
   configure.
 - Dark theme matching the portal, with layouts for desktop, tablet and phone.
@@ -113,7 +113,7 @@ straight to [Adding the card](#adding-the-card).
 
 3. Register it as a resource: **Settings → Dashboards → ⋮ → Resources →
    Add resource**.
-   - URL: `/local/saj-elekeeper-card.js?v=1.2.0`
+   - URL: `/local/saj-elekeeper-card.js?v=1.2.1`
    - Resource type: **JavaScript module**
 
    If you do not see *Resources*, turn on **Advanced mode** in your user
@@ -262,7 +262,8 @@ Use ◀ ▶ to move between days, weeks, months or years.
 
 ### Zooming the charts
 
-The Analysis and Comparison charts zoom like the portal ones:
+The day curves (Analysis → Day) zoom like the portal ones; the bar charts
+always show every bar.
 
 - **Overview strip** under the chart: drag a handle to resize the visible
   window, drag the window to move it, or click elsewhere on the strip to
@@ -272,8 +273,8 @@ The Analysis and Comparison charts zoom like the portal ones:
 - **Drag** the chart to pan while zoomed.
 - **Double-click** the chart, or press **↺**, to show everything again.
 
-On the day chart the time labels follow the zoom, down to 15 minutes. The
-zoom resets when you change the period, the date or the comparison metric.
+The time labels follow the zoom, down to 15 minutes. The zoom resets when
+you change the period or the date.
 
 ### Comparison
 

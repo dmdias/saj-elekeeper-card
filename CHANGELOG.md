@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1
+
+- Fixed: clicking or dragging the zoom strip could shrink the zoom window to
+  its minimum (the chart is redrawn while dragging, and the drag kept reading
+  the size of the replaced, detached elements)
+- Zoom only on the line (power) charts; bar charts always show every bar
+
 ## 1.2.0
 
 - Zoomable Analysis and Comparison charts, as in the Elekeeper portal: an
