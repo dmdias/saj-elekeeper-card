@@ -5,6 +5,7 @@
   Elekeeper portal screenshots. Open in a browser:
     preview/index.html?tab=overview   (overview | device | analysis | comparison)
     &mode=day                         (day | week | month | year | total, for analysis)
+    &zoom=0.3,0.6                     (open the chart zoomed on part of the range)
     &width=1500
 -->
 <html>
@@ -143,7 +144,14 @@
     if (params.get("mode")) card._analysis = { mode: params.get("mode"), date: new Date(2026, 9, 12) };
     if (params.get("detail")) card._detail = params.get("detail");
     if (params.get("cmode")) card._comparison.mode = params.get("cmode");
-    setTimeout(() => card._render(), 50);
+    setTimeout(() => {
+      card._render();
+      // ?zoom=0.3,0.6 opens the chart zoomed on that part of the range
+      if (params.get("zoom")) {
+        const [za, zb] = params.get("zoom").split(",").map(Number);
+        setTimeout(() => card._setZoom(card._tab === "comparison" ? "comparison" : "analysis", za, zb), 400);
+      }
+    }, 50);
   </script>
 </body>
 </html>

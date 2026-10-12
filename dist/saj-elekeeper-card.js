@@ -15,7 +15,7 @@
  *   weather: weather.home      # optional, temperature shown on the overview
  */
 
-const CARD_VERSION = "1.1.2";
+const CARD_VERSION = "1.2.0";
 const DOMAIN = "saj_esolar_cloud";
 
 // Sensor keys that identify each kind of device in the entity registry
@@ -163,8 +163,21 @@ function niceScale(min, max, ticks = 5) {
 
 const CH = { w: 1000, h: 330, l: 58, r: 52, t: 30, b: 40 };
 
-/** Line chart over a time range. series: {name,color,points:[[ms,v]],right?,area?} */
+/** Points of a series inside [from, to], plus one on each side so lines reach the edges. */
+function visiblePoints(points, from, to) {
+  let i0 = points.findIndex((p) => p[0] >= from);
+  if (i0 === -1) i0 = points.length;
+  let i1 = points.length - 1;
+  while (i1 >= 0 && points[i1][0] > to) i1--;
+  return points.slice(Math.max(0, i0 - 1), Math.min(points.length, i1 + 2));
+}
+
+/**
+ * Line chart over a time range. series: {name,color,points:[[ms,v]],right?,area?}.
+ * [start, end] is the visible window (zoom); the y scale follows what is visible.
+ */
 function lineChartSvg(id, series, start, end, leftUnit, rightUnit) {
+  series = series.map((s) => ({ ...s, points: visiblePoints(s.points, start, end) }));
   const left = series.filter((s) => !s.right);
   const right = series.filter((s) => s.right);
   const vals = (list) => list.flatMap((s) => s.points.map((p) => p[1]));
@@ -187,13 +200,14 @@ function lineChartSvg(id, series, start, end, leftUnit, rightUnit) {
   if (right.length) {
     for (const v of rs.values) svg += `<text x="${CH.w - CH.r + 8}" y="${yr(v) + 4}" class="tick">${v}</text>`;
   }
-  // Hour labels
-  const hours = (end - start) / 3600000;
-  const every = hours > 12 ? 2 : 1;
-  for (let h = 0; h <= hours; h += every) {
-    const t = start + h * 3600000;
-    svg += `<text x="${x(t)}" y="${CH.h - 14}" class="tick" text-anchor="middle">${pad(new Date(t).getHours())}:00</text>`;
+  // Time labels: the smallest step that keeps at most ~12 labels
+  const minute = 60000;
+  const step = [15, 30, 60, 120, 180, 240].map((m) => m * minute).find((st) => (end - start) / st <= 12) || 360 * minute;
+  for (let t = Math.ceil(start / step) * step; t <= end; t += step) {
+    const d = new Date(t);
+    svg += `<text x="${x(t)}" y="${CH.h - 14}" class="tick" text-anchor="middle">${pad(d.getHours())}:${pad(d.getMinutes())}</text>`;
   }
+  svg += `<clipPath id="clip-${id}"><rect x="${CH.l}" y="0" width="${pw}" height="${CH.h}"/></clipPath><g clip-path="url(#clip-${id})">`;
   for (const s of series) {
     if (!s.points.length) continue;
     const y = s.right ? yr : yl;
@@ -206,6 +220,7 @@ function lineChartSvg(id, series, start, end, leftUnit, rightUnit) {
     }
     svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
   }
+  svg += "</g>";
   svg += `<line class="cursor" x1="0" x2="0" y1="${CH.t}" y2="${CH.t + ph}" visibility="hidden"/>`;
   svg += `<rect class="hit" x="${CH.l}" y="${CH.t}" width="${pw}" height="${ph}" fill="transparent"/>`;
   svg += "</svg>";
@@ -242,6 +257,37 @@ function barChartSvg(id, categories, series, unit) {
   });
   svg += "</svg>";
   return svg;
+}
+
+/** Overview strip under a chart, with the zoom window and its two handles. */
+function zoomStrip(id, mini, a, b) {
+  return `<div class="zoom" data-zoom="${id}">
+    <svg class="zoom-mini" viewBox="0 0 1000 40" preserveAspectRatio="none">${mini}</svg>
+    <div class="zoom-win" style="left:${a * 100}%;width:${(b - a) * 100}%"><span class="zoom-h" data-h="a"></span><span class="zoom-h" data-h="b"></span></div>
+  </div>`;
+}
+
+/** Mini line of the first series over the whole time range, for the overview strip. */
+function miniLine(series, start, end) {
+  const s = series.find((x) => x.points.length);
+  if (!s) return "";
+  const vs = s.points.map((p) => p[1]);
+  const lo = Math.min(0, ...vs);
+  const hi = Math.max(1, ...vs);
+  const d = s.points
+    .map((p, i) => `${i ? "L" : "M"}${(((p[0] - start) / (end - start)) * 1000).toFixed(1)},${(38 - ((p[1] - lo) / (hi - lo)) * 34).toFixed(1)}`)
+    .join("");
+  return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity="0.8"/>`;
+}
+
+/** Mini bars (sum of the series) per category, for the overview strip. */
+function miniBars(categories, series) {
+  const totals = categories.map((_, i) => series.reduce((acc, s) => acc + (isNum(s.values[i]) ? Number(s.values[i]) : 0), 0));
+  const hi = Math.max(1, ...totals);
+  const w = 1000 / Math.max(categories.length, 1);
+  return totals
+    .map((v, i) => `<rect x="${(i * w + w * 0.15).toFixed(1)}" y="${(38 - (v / hi) * 34).toFixed(1)}" width="${(w * 0.7).toFixed(1)}" height="${((v / hi) * 34).toFixed(1)}" fill="#7f8ba3" opacity="0.7"/>`)
+    .join("");
 }
 
 const legend = (series) =>
@@ -619,8 +665,8 @@ class SajElekeeperCard extends HTMLElement {
         : `<div class="date-nav"><button data-nav="-1">◀</button><span>${esc(this._rangeLabel())}</span><button data-nav="1" ${this._canGoForward() ? "" : "disabled"}>▶</button></div>`;
     const data = this._cache[this._analysisKey()];
     let summary = "";
-    let chart = `<div class="chart-empty">Loading…</div>`;
-    if (data?.error) chart = `<div class="chart-empty">${esc(data.error)}</div>`;
+    let chart = `<div class="chart-empty">Loading…</div><div class="tooltip" hidden></div>`;
+    if (data?.error) chart = `<div class="chart-empty">${esc(data.error)}</div><div class="tooltip" hidden></div>`;
     else if (data) {
       summary = this._summary(data.totals);
       chart = mode === "day" ? this._dayChart(data) : this._barChart(data);
@@ -629,7 +675,7 @@ class SajElekeeperCard extends HTMLElement {
       <div class="panel">
         <div class="panel-head"><h3>Curve Analysis</h3><div class="controls">${nav}${modes}</div></div>
         ${summary}
-        <div class="chart-box">${chart}<div class="tooltip" hidden></div></div>
+        <div class="chart-box" data-box="analysis">${chart}</div>
       </div>`;
   }
 
@@ -657,6 +703,42 @@ class SajElekeeperCard extends HTMLElement {
     </div>`;
   }
 
+  /**
+   * Chart markup for a spec kept in this._charts[id], honouring its zoom
+   * window (fractions a..b of the full range): visible chart, legend and the
+   * overview strip. Kept separate so zooming only redraws the chart box.
+   */
+  _chartHtml(id) {
+    const spec = this._charts[id];
+    if (!spec) return "";
+    const z = this._zoom?.[id];
+    const a = z && z.key === spec.key ? z.a : 0;
+    const b = z && z.key === spec.key ? z.b : 1;
+    let chart;
+    let mini;
+    if (spec.type === "line") {
+      const span = spec.end - spec.start;
+      spec.viewStart = spec.start + a * span;
+      spec.viewEnd = spec.start + b * span;
+      chart = lineChartSvg(id, spec.series, spec.viewStart, spec.viewEnd, spec.leftUnit, spec.rightUnit);
+      mini = miniLine(spec.series, spec.start, spec.end);
+    } else {
+      const n = spec.allCategories.length;
+      const i0 = Math.max(0, Math.min(n - 1, Math.floor(a * n + 1e-6)));
+      const i1 = Math.max(i0 + 1, Math.min(n, Math.ceil(b * n - 1e-6)));
+      spec.offset = i0;
+      spec.categories = spec.allCategories.slice(i0, i1);
+      spec.series = spec.allSeries.map((s) => ({ ...s, values: s.values.slice(i0, i1) }));
+      chart = barChartSvg(id, spec.categories, spec.series, spec.unit);
+      mini = miniBars(spec.allCategories, spec.allSeries);
+    }
+    const zoomed = a > 0.0005 || b < 0.9995;
+    const reset = zoomed ? `<button class="zoom-reset" data-zoom-reset="${id}" title="Reset zoom">↺</button>` : "";
+    // Zooming makes little sense with a handful of bars
+    const strip = spec.type === "line" || spec.allCategories.length > 4 ? zoomStrip(id, mini, a, b) : "";
+    return `${reset}${chart}${strip}${legend(spec.legendSeries || spec.allSeries || spec.series)}<div class="tooltip" hidden></div>`;
+  }
+
   _dayChart(data) {
     const series = [
       { name: "PV Power", color: COLORS.pv, points: data.lines.pvPower || [], area: true },
@@ -665,14 +747,17 @@ class SajElekeeperCard extends HTMLElement {
       { name: "Battery power", color: COLORS.battery, points: data.lines.batteryPower || [], area: true },
       { name: "SOC", color: COLORS.soc, points: data.lines.batEnergyPercent || [], right: true },
     ];
-    this._charts.analysis = { type: "line", series, start: data.start, end: data.end, units: ["W", "W", "W", "W", "%"] };
-    return lineChartSvg("analysis", series, data.start, data.end, "W", "%") + legend(series);
+    this._charts.analysis = {
+      type: "line", key: this._analysisKey(), series, legendSeries: series, start: data.start, end: data.end,
+      units: ["W", "W", "W", "W", "%"], leftUnit: "W", rightUnit: "%",
+    };
+    return this._chartHtml("analysis");
   }
 
   _barChart(data) {
     const series = ENERGY_SERIES.map(([key, name, color]) => ({ name, color, values: data.bars[key] || [] }));
-    this._charts.analysis = { type: "bar", series, categories: data.categories, unit: "kWh" };
-    return barChartSvg("analysis", data.categories, series, "kWh") + legend(series);
+    this._charts.analysis = { type: "bar", key: this._analysisKey(), allSeries: series, allCategories: data.categories, unit: "kWh" };
+    return this._chartHtml("analysis");
   }
 
   _analysisKey() {
@@ -736,8 +821,8 @@ class SajElekeeperCard extends HTMLElement {
         pick = (y) => [sumDefined(data.monthly[y])];
       }
       const series = years.map((y, i) => ({ name: y, color: YEAR_COLORS[i % YEAR_COLORS.length], values: pick(y) }));
-      this._charts.comparison = { type: "bar", series, categories, unit: "kWh" };
-      chart = years.length ? barChartSvg("comparison", categories, series, "kWh") + legend(series) : `<div class="chart-empty">No statistics recorded yet.</div>`;
+      this._charts.comparison = { type: "bar", key: `comparison:${metric}:${mode}`, allSeries: series, allCategories: categories, unit: "kWh" };
+      chart = years.length ? this._chartHtml("comparison") : `<div class="chart-empty">No statistics recorded yet.</div><div class="tooltip" hidden></div>`;
     }
     return `
       <div class="panel">
@@ -746,8 +831,105 @@ class SajElekeeperCard extends HTMLElement {
           <div class="seg">${[["monthly", "Monthly"], ["quarter", "Quarter"], ["annual", "Annual"]]
             .map(([k, n]) => `<button data-cmode="${k}" class="${k === mode ? "on" : ""}">${n}</button>`)
             .join("")}</div></div></div>
-        <div class="chart-box">${chart}<div class="tooltip" hidden></div></div>
+        <div class="chart-box" data-box="comparison">${chart}</div>
       </div>`;
+  }
+
+  /* ----- zoom ----- */
+
+  _setZoom(id, a, b) {
+    const spec = this._charts[id];
+    if (!spec) return;
+    const min = spec.type === "line" ? 1 / 48 : 1 / Math.max(spec.allCategories.length, 1); // 30 min, or one bar
+    let w = Math.max(min, Math.min(1, b - a));
+    a = Math.max(0, Math.min(1 - w, a));
+    (this._zoom ??= {})[id] = { key: spec.key, a, b: a + w };
+    if (this._zoomFrame) return;
+    this._zoomFrame = requestAnimationFrame(() => {
+      this._zoomFrame = null;
+      this._redrawChart(id);
+    });
+  }
+
+  _redrawChart(id) {
+    const box = this.shadowRoot.querySelector(`[data-box="${id}"]`);
+    if (!box) return;
+    box.innerHTML = this._chartHtml(id);
+    this._bindChart(box);
+  }
+
+  _bindChart(box) {
+    const svg = box.querySelector("svg[data-chart]");
+    if (!svg) return;
+    const id = svg.dataset.chart;
+    this._bindTooltip(svg);
+    const current = () => {
+      const z = this._zoom?.[id];
+      return z && z.key === this._charts[id]?.key ? [z.a, z.b] : [0, 1];
+    };
+    const plotFraction = (clientX) => {
+      const r = svg.getBoundingClientRect();
+      const vx = ((clientX - r.left) / r.width) * CH.w;
+      return Math.max(0, Math.min(1, (vx - CH.l) / (CH.w - CH.l - CH.r)));
+    };
+    // Ctrl/Cmd + wheel (and trackpad pinch) zooms around the cursor; plain wheel scrolls the page
+    svg.addEventListener(
+      "wheel",
+      (ev) => {
+        if (!ev.ctrlKey && !ev.metaKey) return;
+        ev.preventDefault();
+        const [a, b] = current();
+        const f = a + plotFraction(ev.clientX) * (b - a);
+        const factor = Math.exp(ev.deltaY * 0.004);
+        this._setZoom(id, f - (f - a) * factor, f + (b - f) * factor);
+      },
+      { passive: false }
+    );
+    svg.addEventListener("dblclick", () => this._setZoom(id, 0, 1));
+    // Drag on the chart pans when zoomed
+    svg.addEventListener("pointerdown", (ev) => {
+      const [a0, b0] = current();
+      if (b0 - a0 >= 0.999 || ev.button !== 0) return;
+      const x0 = plotFraction(ev.clientX);
+      const move = (e) => {
+        const dx = (plotFraction(e.clientX) - x0) * (b0 - a0);
+        this._setZoom(id, a0 - dx, b0 - dx);
+      };
+      const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up));
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    const strip = box.querySelector(".zoom");
+    if (strip) {
+      const frac = (clientX) => {
+        const r = strip.getBoundingClientRect();
+        return Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+      };
+      strip.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        const [a0, b0] = current();
+        const f0 = frac(ev.clientX);
+        const handle = ev.target.dataset?.h;
+        const inWindow = ev.target.closest(".zoom-win");
+        if (!handle && !inWindow) {
+          // Click outside the window: centre it there
+          const w = b0 - a0;
+          this._setZoom(id, f0 - w / 2, f0 + w / 2);
+          return;
+        }
+        const move = (e) => {
+          const d = frac(e.clientX) - f0;
+          if (handle === "a") this._setZoom(id, Math.min(a0 + d, b0 - 0.005), b0);
+          else if (handle === "b") this._setZoom(id, a0, Math.max(b0 + d, a0 + 0.005));
+          else this._setZoom(id, a0 + d, b0 + d);
+        };
+        const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up));
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      });
+    }
+    const reset = box.querySelector("[data-zoom-reset]");
+    if (reset) reset.onclick = () => this._setZoom(id, 0, 1);
   }
 
   /* ----- data loading ----- */
@@ -893,7 +1075,7 @@ class SajElekeeperCard extends HTMLElement {
     root.querySelectorAll("[data-cmode]").forEach((b) => (b.onclick = () => ((this._comparison.mode = b.dataset.cmode), this._render())));
     const sel = root.querySelector("[data-metric]");
     if (sel) sel.onchange = () => ((this._comparison.metric = sel.value), this._render());
-    root.querySelectorAll("svg[data-chart]").forEach((svg) => this._bindTooltip(svg));
+    root.querySelectorAll("[data-box]").forEach((box) => this._bindChart(box));
   }
 
   _bindTooltip(svg) {
@@ -916,7 +1098,9 @@ class SajElekeeperCard extends HTMLElement {
       hit.onmousemove = (ev) => {
         const r = svg.getBoundingClientRect();
         const vx = ((ev.clientX - r.left) / r.width) * CH.w;
-        const t = chart.start + ((vx - CH.l) / (CH.w - CH.l - CH.r)) * (chart.end - chart.start);
+        const vs = chart.viewStart ?? chart.start;
+        const ve = chart.viewEnd ?? chart.end;
+        const t = vs + ((vx - CH.l) / (CH.w - CH.l - CH.r)) * (ve - vs);
         cursor.setAttribute("x1", vx);
         cursor.setAttribute("x2", vx);
         cursor.setAttribute("visibility", "visible");
@@ -1170,6 +1354,13 @@ const STYLES = `
   .chart .grid { stroke:#3d4558; stroke-width:1; } .chart .zero { stroke:#cfd5e2; stroke-width:1; }
   .chart .tick, .chart .axis-unit { fill:#c5cbd8; font-size:13px; }
   .chart .cursor { stroke:#aab2c2; stroke-dasharray:3 3; }
+  .zoom { position:relative; height:40px; margin:6px ${CH.r / 10}% 0 ${CH.l / 10}%; background:#1f2533; border-radius:6px; cursor:pointer; touch-action:none; }
+  .zoom-mini { position:absolute; inset:0; width:100%; height:100%; }
+  .zoom-win { position:absolute; top:0; bottom:0; background:rgba(111,216,192,0.14); border:1px solid rgba(111,216,192,0.55); border-radius:6px; cursor:grab; }
+  .zoom-h { position:absolute; top:6px; bottom:6px; width:8px; border-radius:4px; background:#cfe9e1; cursor:ew-resize; }
+  .zoom-h[data-h="a"] { left:-5px; } .zoom-h[data-h="b"] { right:-5px; }
+  .zoom-reset { position:absolute; top:10px; right:12px; z-index:1; background:#3a4359; color:var(--text); border:none; border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:16px; }
+  .chart { touch-action:pan-y; }
   .chart-empty { height:240px; display:flex; align-items:center; justify-content:center; color:var(--muted); }
   .legend { display:flex; justify-content:center; flex-wrap:wrap; gap:18px; font-size:14px; padding:8px; }
   .legend i, .tooltip i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }

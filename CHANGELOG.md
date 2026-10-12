@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0
+
+- Zoomable Analysis and Comparison charts, as in the Elekeeper portal: an
+  overview strip with a resizable, draggable window under each chart, Ctrl/⌘
+  + wheel or pinch to zoom around the cursor, drag to pan, double-click or ↺
+  to reset. The day chart time labels follow the zoom (down to 15 minutes)
+
 ## 1.1.2
 
 - "Total" label under the lifetime values of the Energy Generated and Energy
