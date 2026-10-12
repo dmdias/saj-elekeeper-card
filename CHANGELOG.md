@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1
+
+- Solar panels on the overview house drawn as individual modules that follow
+  the roof perspective (the grid lines no longer cross the panel edges, and
+  the chimney no longer covers the array)
+- PV flow line starts at the panels; PV and Load labels point at the panels
+  and the house
+
 ## 1.1.0
 
 First release as a standalone HACS dashboard card.

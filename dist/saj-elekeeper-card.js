@@ -15,7 +15,7 @@
  *   weather: weather.home      # optional, temperature shown on the overview
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.1.1";
 const DOMAIN = "saj_esolar_cloud";
 
 // Sensor keys that identify each kind of device in the entity registry
@@ -462,8 +462,8 @@ class SajElekeeperCard extends HTMLElement {
           ${weatherTemp !== undefined ? `<div class="weather">☁ ${fmtNumber(weatherTemp, 0)}°C</div>` : ""}
           ${flowDiagram({ grid, pv, load, bat, dir })}
           <div class="flow-label" style="left:24%"><b>${gv}</b> ${gu}<div class="lbl">Grid</div></div>
-          <div class="flow-label" style="left:45%"><b>${pvv}</b> ${pvu}${kwp ? `<div><b>${esc(kwp)}</b> kWp</div>` : ""}<div class="lbl">PV</div></div>
-          <div class="flow-label" style="left:66%"><b>${lv}</b> ${lu}<div class="lbl">Load</div></div>
+          <div class="flow-label" style="left:60%"><b>${pvv}</b> ${pvu}${kwp ? `<div><b>${esc(kwp)}</b> kWp</div>` : ""}<div class="lbl">PV</div></div>
+          <div class="flow-label" style="left:76%"><b>${lv}</b> ${lu}<div class="lbl">Load</div></div>
           <div class="flow-label bottom" style="left:41%"><b>${fmtNumber(soc, 0)}%</b> <span class="state ${batState.toLowerCase()}">${batState}</span>
             <div><b>${bv}</b> ${bu}</div><div class="lbl">${esc(this._inverterModelShort())}</div></div>
         </div>
@@ -975,13 +975,13 @@ function flowDiagram({ grid, pv, load, bat, dir }) {
     <defs>
       <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b3f47"/><stop offset="1" stop-color="#25282e"/></linearGradient>
       <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5a5650"/><stop offset="1" stop-color="#3e3b37"/></linearGradient>
-      <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2c3a52"/><stop offset="1" stop-color="#151c29"/></linearGradient>
+      <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34466a"/><stop offset="1" stop-color="#1b2436"/></linearGradient>
       <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#5fd3a8" stop-opacity="0.35"/><stop offset="1" stop-color="#5fd3a8" stop-opacity="0"/></radialGradient>
     </defs>
     <!-- leader lines to the labels -->
     <line x1="240" y1="0" x2="240" y2="330" class="leader"/>
-    <line x1="450" y1="0" x2="450" y2="150" class="leader"/>
-    <line x1="660" y1="0" x2="660" y2="300" class="leader"/>
+    <line x1="600" y1="0" x2="600" y2="150" class="leader"/>
+    <line x1="760" y1="0" x2="760" y2="282" class="leader"/>
     <line x1="410" y1="430" x2="410" y2="560" class="leader"/>
     <!-- ground -->
     <polygon points="150,430 520,520 900,400 560,330" fill="#2e3036"/>
@@ -996,12 +996,7 @@ function flowDiagram({ grid, pv, load, bat, dir }) {
     <polygon points="520,360 760,280 760,420 520,505" fill="#4a4743"/>
     <polygon points="300,305 470,165 540,365" fill="url(#roof)"/>
     <polygon points="470,165 700,105 785,285 540,365" fill="url(#roof)"/>
-    <polygon points="490,180 690,128 760,272 548,340" fill="url(#panel)" stroke="#4a5876" stroke-width="2"/>
-    <g stroke="#4a5876" stroke-width="1.4">
-      <line x1="540" y1="167" x2="604" y2="317"/><line x1="590" y1="154" x2="656" y2="300"/><line x1="640" y1="141" x2="708" y2="287"/>
-      <line x1="514" y1="226" x2="718" y2="176"/><line x1="530" y1="282" x2="740" y2="226"/>
-    </g>
-    <polygon points="660,170 720,150 740,195 680,215" fill="#3a3d44"/>
+    ${solarArray()}
     <!-- windows -->
     <rect x="352" y="345" width="30" height="48" fill="#e2b36f" opacity="0.85"/>
     <rect x="432" y="368" width="30" height="48" fill="#e2b36f" opacity="0.85"/>
@@ -1017,12 +1012,44 @@ function flowDiagram({ grid, pv, load, bat, dir }) {
     <path d="M415,406 l-8,16 h7 l-5,14 l12,-19 h-7 z" fill="#5fd3a8"/>
     <!-- flows -->
     ${flow("f-grid", "M244,300 L320,322 L384,345", active(grid), !importing)}
-    ${flow("f-pv", "M450,190 L450,310 L411,330", active(pv), false)}
+    ${flow("f-pv", "M552,334 L470,318 L437,336", active(pv), false)}
     ${flow("f-bat", "M411,388 L411,398", active(bat), !charging)}
-    ${flow("f-load", "M437,360 L520,385 L660,345", active(load), false)}
+    ${flow("f-load", "M437,360 L520,385 L700,326", active(load), false)}
     <!-- car -->
     <ellipse cx="640" cy="450" rx="36" ry="14" fill="#9aa0a8"/>
   </svg>`;
+}
+
+/**
+ * Solar modules laid out on the roof plane. Each module is interpolated from
+ * the corners of the array, so the grid always follows the roof perspective.
+ */
+function solarArray() {
+  const corners = [[492, 183], [688, 132], [756, 270], [552, 336]]; // top-left, top-right, bottom-right, bottom-left
+  const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+  const at = (u, v) => lerp(lerp(corners[0], corners[1], u), lerp(corners[3], corners[2], u), v);
+  const pt = (p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`;
+  const cols = 5;
+  const rows = 3;
+  const gu = 0.012;
+  const gv = 0.02;
+  let svg = `<polygon points="${corners.map(pt).join(" ")}" fill="#151a24" stroke="#596579" stroke-width="2.5" stroke-linejoin="round"/>`;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const u0 = c / cols + gu;
+      const u1 = (c + 1) / cols - gu;
+      const v0 = r / rows + gv;
+      const v1 = (r + 1) / rows - gv;
+      const quad = [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)];
+      svg += `<polygon points="${quad.map(pt).join(" ")}" fill="url(#panel)"/>`;
+      // one cell line across the middle of each module
+      svg += `<line x1="${at(u0, (v0 + v1) / 2)[0].toFixed(1)}" y1="${at(u0, (v0 + v1) / 2)[1].toFixed(1)}" x2="${at(u1, (v0 + v1) / 2)[0].toFixed(1)}" y2="${at(u1, (v0 + v1) / 2)[1].toFixed(1)}" stroke="#3b4a66" stroke-width="0.8"/>`;
+    }
+  }
+  // soft reflection across the array
+  const shine = [at(0.05, 0), at(0.35, 0), at(0.15, 1), at(0, 1)];
+  svg += `<polygon points="${shine.map(pt).join(" ")}" fill="#ffffff" opacity="0.04"/>`;
+  return svg;
 }
 
 const INVERTER_ART = `
