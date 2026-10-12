@@ -15,7 +15,7 @@
  *   weather: weather.home      # optional, temperature shown on the overview
  */
 
-const CARD_VERSION = "1.1.1";
+const CARD_VERSION = "1.1.2";
 const DOMAIN = "saj_esolar_cloud";
 
 // Sensor keys that identify each kind of device in the entity registry
@@ -443,7 +443,7 @@ class SajElekeeperCard extends HTMLElement {
       const [tv, tu] = fmtEnergy(this._num(totalKey));
       const today = this._num(todayKey);
       return `<div class="pair">
-        <div>${label ? `<div class="lbl">${label}</div>` : ""}<div class="big">${tv} <small>${tu}</small></div></div>
+        <div>${label ? `<div class="lbl">${label}</div>` : ""}<div class="big">${tv} <small>${tu}</small></div>${label ? "" : `<div class="lbl">Total</div>`}</div>
         <div class="right"><div class="plus">+${fmtNumber(today)} <small>kWh</small></div><div class="lbl">Today</div></div></div>`;
     };
     const selfUse = this._num("selfUseRate");

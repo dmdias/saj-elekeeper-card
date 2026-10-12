@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2
+
+- "Total" label under the lifetime values of the Energy Generated and Energy
+  Consumption cards, matching the "Today" label next to them
+
 ## 1.1.1
 
 - Solar panels on the overview house drawn as individual modules that follow

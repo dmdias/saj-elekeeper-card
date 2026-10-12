@@ -110,7 +110,7 @@ straight to [Adding the card](#adding-the-card).
 
 3. Register it as a resource: **Settings → Dashboards → ⋮ → Resources →
    Add resource**.
-   - URL: `/local/saj-elekeeper-card.js?v=1.1.1`
+   - URL: `/local/saj-elekeeper-card.js?v=1.1.2`
    - Resource type: **JavaScript module**
 
    If you do not see *Resources*, turn on **Advanced mode** in your user
