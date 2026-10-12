@@ -38,7 +38,7 @@ card itself from the Home Assistant history and statistics.
 ## Features
 
 - **Overview**: animated energy flow between grid, solar panels, battery and
-  house, with live power values. Also the plant strategy (operating mode),
+  house, with live power values, and a satellite view of the plant location. Also the plant strategy (operating mode),
   revenue, and energy generated / consumption / grid / battery totals with
   today's values.
 - **Device**: inverter and battery packs table, an inverter / battery detail
@@ -113,7 +113,7 @@ straight to [Adding the card](#adding-the-card).
 
 3. Register it as a resource: **Settings → Dashboards → ⋮ → Resources →
    Add resource**.
-   - URL: `/local/saj-elekeeper-card.js?v=1.2.1`
+   - URL: `/local/saj-elekeeper-card.js?v=1.3.0`
    - Resource type: **JavaScript module**
 
    If you do not see *Resources*, turn on **Advanced mode** in your user
@@ -170,6 +170,10 @@ view: overview
 | `plant_uid`   | string | first plant | The plant to show, when the integration monitors several. This is the plant ID shown in the card header. |
 | `pv_capacity` | number | –           | Installed solar capacity in kWp, shown under the PV power on the overview. |
 | `weather`     | string | –           | A `weather.*` entity whose temperature is shown on the overview. |
+| `location`    | string / false | plant | Plant location for the map: `"38.7223, -9.1393"` (as Google Maps copies it). Default: the plant coordinates from the SAJ cloud, else the Home Assistant home location. `false` hides the map. |
+| `map_zoom`    | number | `19`        | Zoom of the location map (17 = wider, 20 = closer). |
+| `google_maps_api_key` | string | – | Show current Google satellite imagery through the free Maps Embed API (see [Location map](#location-map)). |
+| `map_type`    | string | `satellite` | Without a key: `satellite` (Esri photo) or `google` (keyless Google embed, with street and place labels). |
 | `title`       | string | plant name  | Replaces the plant name in the header. |
 
 ### Examples
@@ -227,6 +231,36 @@ cards:
   hidden when the SAJ account reports no revenue.
 - **Energy cards**: lifetime totals with today's values. Energy Generated
   also shows today's self-consumption rate.
+
+### Location map
+
+Under *Plant Strategy* the overview shows a satellite view of the plant,
+with a pin on its location. Clicking it opens Google Maps there.
+
+- **Where:** the plant coordinates kept in the SAJ cloud (SAJ eSolar Cloud
+  integration 1.3.0 or newer), unless you set `location`. Otherwise the
+  Home Assistant home location.
+- **Default imagery:** without any setup the photo comes from Esri World
+  Imagery. It is free and needs no key, but it is often older than Google's.
+- **Current Google imagery:** add a key for the **Maps Embed API**. This
+  API is free with no usage limit.
+  1. In the [Google Cloud console](https://console.cloud.google.com/), create
+     a project and enable **Maps Embed API** (APIs & Services → Library).
+     Google may ask for a billing account; this API is not charged.
+  2. APIs & Services → Credentials → **Create credentials → API key**.
+  3. Restrict the key:
+     - **Websites (HTTP referrers)**: every address you open Home Assistant
+       from, e.g. `http://192.168.1.10:8123/*` and `https://ha.example.com/*`.
+     - **API restrictions**: Maps Embed API only.
+  4. Add it to the card:
+
+     ```yaml
+     google_maps_api_key: AIza...
+     ```
+
+  The key is stored in the dashboard configuration, so keep it restricted
+  to your Home Assistant addresses. If Google answers "not authorized …
+  with referer …", add that address to the key's websites.
 
 ### Device
 
@@ -361,6 +395,13 @@ That sensor has no value. Check it in **Settings → Entities**.
 Your browser is still using the old file. Update through HACS, or change the
 `?v=` of the resource. Then reload with the cache cleared (Ctrl/Cmd + Shift
 + R).
+
+**The location map is empty or shows a Google error**
+- **No map at all:** the map needs coordinates. Use SAJ eSolar Cloud 1.3.0
+  or newer, set `location`, or set the Home Assistant home location.
+- **"This IP, site or mobile application is not authorized":** the address
+  you use to open Home Assistant is missing from the key's website
+  restrictions. Add it as `https://your.address/*`.
 
 **The charts say "Loading…" forever or show an error**
 The card reads history and statistics through the recorder. Check that the

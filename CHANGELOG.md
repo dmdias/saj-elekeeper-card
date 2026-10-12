@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0
+
+- Location map under *Plant Strategy*: a satellite view of the plant with a
+  pin, linking to Google Maps. Uses the plant coordinates from the SAJ cloud
+  (integration 1.3.0+), `location`, or the Home Assistant home location
+- Esri World Imagery by default (no key). With `google_maps_api_key`, current
+  Google satellite imagery through the free Maps Embed API (the card sends
+  the page origin as referrer, so website-restricted keys work).
+  `map_type: google` for the keyless Google embed with labels
+- Options `location`, `map_zoom`, `map_type`, `google_maps_api_key`
+
 ## 1.2.1
 
 - Fixed: clicking or dragging the zoom strip could shrink the zoom window to

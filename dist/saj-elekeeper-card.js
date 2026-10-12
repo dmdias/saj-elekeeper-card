@@ -13,9 +13,13 @@
  *   view: all                  # all | overview | device | analysis | comparison
  *   pv_capacity: 4.5           # optional, kWp shown under the PV power
  *   weather: weather.home      # optional, temperature shown on the overview
+ *   location: "38.72, -9.14"   # optional, plant location map (Google Maps); HA home by default, false hides it
+ *   map_zoom: 19               # optional, zoom of the location map
+ *   map_type: satellite        # optional, satellite (Esri photo, default) | google (keyless Google embed, with labels)
+ *   google_maps_api_key: ...   # optional, current Google satellite imagery through the free Maps Embed API
  */
 
-const CARD_VERSION = "1.2.1";
+const CARD_VERSION = "1.3.0";
 const DOMAIN = "saj_esolar_cloud";
 
 // Sensor keys that identify each kind of device in the entity registry
@@ -419,6 +423,7 @@ class SajElekeeperCard extends HTMLElement {
     else if (!this._map) body = `<div class="empty">${esc(this._error)}</div>`;
     else body = this._shell();
     root.innerHTML = `<style>${STYLES}</style><ha-card><div class="wrap">${body}</div></ha-card>`;
+    this._mountLocation();
     this._bind();
     if (this._map) this._loadAsync();
   }
@@ -511,6 +516,7 @@ class SajElekeeperCard extends HTMLElement {
             <div class="money">${revenue === null ? "--" : fmtNumber(revenue, 1)}<small>${esc(symbol)}</small></div>
             ${delta === null ? "" : `<div class="center plus">+${fmtNumber(delta, 2)} <span class="up">↗</span></div><div class="center lbl">${deltaLabel}</div>`}
           </div></div>`}
+          ${this._locationSlot()}
         </div>
       </div>
       <div class="stats">
@@ -520,6 +526,78 @@ class SajElekeeperCard extends HTMLElement {
         ${card("⚡", "Grid", pair("Import", "totalBuyElec", "dailyGridImport") + pair("Export", "totalSellElec", "dailyGridExport"))}
         ${card("▭", "Battery", pair("Charge", "totalBatteryCharge", "dailyBatteryCharge") + pair("Discharge", "totalBatteryDischarge", "dailyBatteryDischarge"))}
       </div>`;
+  }
+
+  /**
+   * Plant location, in order: the card config ("lat, lon" as Google Maps
+   * copies it, or {latitude, longitude}), the plant coordinates from the SAJ
+   * cloud (attributes of the Last Update sensor), the Home Assistant home
+   * location. `location: false` hides the map.
+   */
+  _location() {
+    const cfg = this._config?.location;
+    if (cfg === false || !this._hass) return null;
+    const valid = (lat, lon) => (Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon) ? { lat, lon } : null);
+    if (typeof cfg === "string" && cfg.includes(",")) {
+      const [lat, lon] = cfg.split(",").map((v) => Number(v.trim()));
+      return valid(lat, lon);
+    }
+    if (cfg && typeof cfg === "object") return valid(Number(cfg.latitude), Number(cfg.longitude));
+    const plant = this._map ? this._st("lastUploadTime")?.attributes : null;
+    return (
+      (plant && valid(Number(plant.latitude), Number(plant.longitude))) ||
+      valid(Number(this._hass.config?.latitude), Number(this._hass.config?.longitude))
+    );
+  }
+
+  _locationSlot() {
+    const loc = this._location();
+    if (!loc) return "";
+    const zoom = Math.max(3, Math.min(19, Number(this._config.map_zoom) || 19));
+    const google = `https://www.google.com/maps/@${loc.lat},${loc.lon},${Math.min(zoom, 21)}z/data=!3m1!1e3`;
+    // Google imagery is an iframe (Embed API with a key, else the keyless embed)
+    if (this._config.google_maps_api_key) {
+      // The satellite view has no marker: the card's pin sits on the centre,
+      // which is the plant, and the map is not draggable so it stays there.
+      // Clicking opens Google Maps to explore.
+      return `<div class="panel location"><a class="location-map static" href="${esc(google)}" target="_blank" rel="noopener" title="Open in Google Maps">
+        <div class="frame-slot" data-location></div><span class="pin"></span></a></div>`;
+    }
+    if (this._config.map_type === "google") {
+      // The keyless embed already drops its own marker and can be explored in place
+      return `<div class="panel location"><div class="location-map" data-location></div></div>`;
+    }
+    return `<div class="panel location"><a class="location-map" href="${esc(google)}" target="_blank" rel="noopener" title="Open in Google Maps">
+      ${satelliteMosaic(loc.lat, loc.lon, zoom)}<span class="pin"></span>
+      <span class="map-credit">Imagery © Esri, Maxar, Earthstar Geographics</span></a></div>`;
+  }
+
+  /**
+   * Google Maps iframe, created once and moved into each render so it is not
+   * reloaded on every sensor update. With google_maps_api_key it uses the
+   * Maps Embed API (free, current imagery, plain satellite without labels);
+   * otherwise the keyless embed, which shows labels on top.
+   */
+  _mountLocation() {
+    const slot = this.shadowRoot.querySelector("[data-location]");
+    const loc = this._location();
+    if (!slot || !loc) return;
+    const zoom = Math.min(21, Number(this._config.map_zoom) || 19);
+    const key = this._config.google_maps_api_key;
+    const src = key
+      ? `https://www.google.com/maps/embed/v1/view?key=${encodeURIComponent(key)}&center=${loc.lat},${loc.lon}&zoom=${zoom}&maptype=satellite`
+      : `https://maps.google.com/maps?q=${loc.lat},${loc.lon}&t=k&z=${zoom}&output=embed`;
+    if (!this._mapFrame || this._mapFrame.dataset.src !== src) {
+      this._mapFrame = document.createElement("iframe");
+      this._mapFrame.dataset.src = src;
+      this._mapFrame.src = src;
+      this._mapFrame.loading = "lazy";
+      this._mapFrame.title = "Plant location";
+      // Home Assistant pages send no referrer to other sites; a Google key
+      // restricted to websites needs at least the origin of the HA address
+      this._mapFrame.referrerPolicy = "origin";
+    }
+    slot.appendChild(this._mapFrame);
   }
 
   _inverterModelShort() {
@@ -1225,6 +1303,30 @@ function solarArray() {
   return svg;
 }
 
+/**
+ * Satellite photo around a point: Esri World Imagery tiles (no API key) laid
+ * out in a 5x5 mosaic and shifted so the point sits in the middle of the box.
+ */
+function satelliteMosaic(lat, lon, zoom) {
+  const n = 2 ** zoom;
+  const rad = (lat * Math.PI) / 180;
+  const x = ((lon + 180) / 360) * n;
+  const y = ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n;
+  const x0 = Math.floor(x) - 2;
+  const y0 = Math.floor(y) - 2;
+  let tiles = "";
+  for (let ty = 0; ty < 5; ty++) {
+    for (let tx = 0; tx < 5; tx++) {
+      const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y0 + ty}/${x0 + tx}`;
+      tiles += `<img src="${url}" style="left:${tx * 256}px;top:${ty * 256}px" alt="" loading="lazy" draggable="false">`;
+    }
+  }
+  // Point position inside the 1280x1280 mosaic
+  const px = (x - x0) * 256;
+  const py = (y - y0) * 256;
+  return `<div class="mosaic" style="left:calc(50% - ${px.toFixed(1)}px);top:calc(50% - ${py.toFixed(1)}px)">${tiles}</div>`;
+}
+
 const INVERTER_ART = `
   <svg viewBox="0 0 300 300" class="art">
     <defs><radialGradient id="ig" cx="0.5" cy="0.5" r="0.6"><stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs>
@@ -1285,6 +1387,16 @@ const STYLES = `
   .flow.rev { animation-direction:reverse; }
   @keyframes dash { to { stroke-dashoffset:-24; } }
   .side { display:flex; flex-direction:column; gap:14px; padding-top:50px; }
+  .panel.location { padding:6px; flex:1; min-height:260px; display:flex; }
+  .location-map { flex:1; border-radius:12px; overflow:hidden; background:#10141d; position:relative; display:block; min-height:248px; }
+  .mosaic { position:absolute; width:1280px; height:1280px; }
+  .mosaic img { position:absolute; width:256px; height:256px; user-select:none; }
+  .pin { position:absolute; left:50%; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%; background:#5fd3a8;
+    border:3px solid #fff; box-shadow:0 0 0 6px rgba(95,211,168,0.35), 0 2px 8px rgba(0,0,0,0.6); }
+  .map-credit { position:absolute; right:6px; bottom:4px; font-size:10px; color:#e8ebf2; opacity:0.75; text-shadow:0 1px 2px #000; }
+  .frame-slot { position:absolute; inset:0; }
+  .location-map.static iframe { pointer-events:none; }
+  .location-map iframe { width:100%; height:100%; min-height:248px; border:0; display:block; filter:saturate(0.9) brightness(0.92); }
   .side .panel { background:var(--panel2); }
   .revenue .inner { background:#3a4254; border-radius:12px; padding:22px 10px; }
   .money { font-size:54px; font-weight:600; text-align:center; margin:10px 0; }
