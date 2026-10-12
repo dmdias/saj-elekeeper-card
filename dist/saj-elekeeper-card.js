@@ -1,5 +1,6 @@
 /*
  * SAJ Elekeeper card for Home Assistant.
+ * Author: Daniel Dias (@dmdias) - https://github.com/dmdias/saj-elekeeper-card
  *
  * A dashboard in the style of the SAJ Elekeeper portal (overview with the
  * energy flow, device list, inverter/battery detail, curve analysis and

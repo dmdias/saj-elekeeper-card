@@ -4,6 +4,7 @@
 [![GitHub release](https://img.shields.io/github/release/dmdias/saj-elekeeper-card.svg)](https://github.com/dmdias/saj-elekeeper-card/releases)
 [![Validate](https://github.com/dmdias/saj-elekeeper-card/actions/workflows/validate.yml/badge.svg)](https://github.com/dmdias/saj-elekeeper-card/actions/workflows/validate.yml)
 [![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-PayPal-ffdd00?logo=buymeacoffee&logoColor=black)](https://www.paypal.com/donate/?business=dmdias%40gmail.com&currency_code=EUR&item_name=SAJ+Elekeeper+Card)
 
 A Home Assistant dashboard card that recreates the **SAJ Elekeeper** portal
 for SAJ solar inverters and batteries: the house energy flow, the device
@@ -30,6 +31,8 @@ card itself from the Home Assistant history and statistics.
 - [Updating](#updating)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
+- [Support the project](#support-the-project)
+- [Author](#author)
 - [License](#license)
 
 ## Features
@@ -372,6 +375,20 @@ To release a new version:
 2. Create a GitHub release tagged `vX.Y.Z` with the same version. The release
    workflow checks the version and attaches the card file, and HACS offers
    the update.
+
+## Support the project
+
+If the card is useful to you, you can buy me a coffee ☕. Thank you!
+
+<a href="https://www.paypal.com/donate/?business=dmdias%40gmail.com&currency_code=EUR&item_name=SAJ+Elekeeper+Card"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Donate%20with%20PayPal-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+
+Bug reports and ideas are welcome in the [issues](https://github.com/dmdias/saj-elekeeper-card/issues).
+
+## Author
+
+**Daniel Dias** ([@dmdias](https://github.com/dmdias)), who also maintains the
+[SAJ eSolar Cloud](https://github.com/dmdias/ha-saj-esolar-cloud) fork the card
+reads from.
 
 ## License
 
